@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { readFileSync } from 'node:fs'
-import { createBond, parseMoexResponse } from '../src/moexApi.js'
+import { createBond, parseMoexResponse, parseCorpResponse } from '../src/moexApi.js'
 import { publicBond, calculateInvestment, selectBonds } from '../src/bondData.js'
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/moex-ofz-20261029.json', import.meta.url)))
@@ -10,6 +10,17 @@ const schedule = Object.fromEntries(['coupons', 'amortizations', 'offers'].map(k
 const bonds = parseMoexResponse(fixture, 'ofz')
 const fixed = bonds.find(b => b.secId === 'SU26238RMFS4')
 const floating = bonds.find(b => b.secId === 'SU29028RMFS6')
+
+test('ТрансФин-М и СФО МО не становятся Транснефтью и региональным займом', () => {
+  const issuerFixture = JSON.parse(readFileSync(new URL('./fixtures/moex-issuers-20261029.json', import.meta.url)))
+  const selected = parseCorpResponse(issuerFixture, 'https://iss.moex.com/')
+  assert.equal(selected.length, 3)
+  assert.equal(selected.filter(b => b.boardType === 'subfed').length, 2)
+  const transneft = selected.find(b => b.issuer?.code === 'transneft')
+  assert.match(transneft.fullName, /^Транснефть/)
+  assert.equal(publicBond(transneft).issuer, null)
+  assert.equal(publicBond(transneft).issuerFilterGroup.code, 'transneft')
+})
 
 function fromRaw(security, market) {
   return createBond(Object.values(security), Object.fromEntries(Object.keys(security).map((key, i) => [key, i])), Object.values(market), Object.fromEntries(Object.keys(market).map((key, i) => [key, i])), 'ofz', null, 'https://iss.moex.com/')

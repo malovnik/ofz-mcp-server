@@ -7,7 +7,7 @@ import { fetchBonds, fetchPaymentSchedule, SAFE_ISSUERS } from './moexApi.js'
 import { coverage, timing, selectBonds, publicBond, bondsText, calculateInvestment } from './bondData.js'
 
 const info = {
-  name: 'mosbirzha-bonds', title: 'Мосбиржа — облигации', version: '1.1.0',
+  name: 'mosbirzha-bonds', title: 'Мосбиржа — облигации', version: '1.1.1',
   description: 'Облигации MOEX ISS: котировки, купоны, НКД, сроки, фильтры и календарь выплат. Источники и время каждого показателя. Только чтение, без ключа API. ' + coverage,
   websiteUrl: 'https://club.nikexpert.ru/mcp/moex/',
 }

@@ -26,7 +26,8 @@ export function publicBond(b) {
   if (b.priceSource?.startsWith('securities.')) notes.push('Цена и доходность взяты за предыдущую торговую дату, указанную в source.previousDate.')
   return {
     ticker: b.secId, name: b.shortName, fullName: b.fullName, type: b.boardType,
-    issuer: b.issuer?.name ?? (b.boardType === 'ofz' ? 'Минфин РФ' : null),
+    issuer: b.boardType === 'ofz' ? 'Минфин РФ' : null,
+    issuerFilterGroup: b.issuer,
     price: b.price, priceUnit: '% номинала', priceSource: b.priceSource,
     yield: b.yield, yieldUnit: '% годовых', yieldSource: b.yieldSource, yieldKind: b.yieldKind, yieldDate: b.yieldDate, yieldDateType: b.yieldDateType,
     legacyYield: b.legacyYield, legacyYieldSource: b.legacyYieldSource, lastTradePrice: b.lastTradePrice,

@@ -64,7 +64,7 @@ export function parseMoexResponse(data, boardType, sourceUrl = MOEX_OFZ_URL) {
     .filter((bond) => bond.daysToMaturity > 0)
 }
 
-function parseCorpResponse(data, sourceUrl) {
+export function parseCorpResponse(data, sourceUrl) {
   const { securities, marketdata } = data
 
   const secCols = mapColumns(securities.columns)
@@ -82,7 +82,7 @@ function parseCorpResponse(data, sourceUrl) {
     if (!shortName) continue
 
     // Проверяем субфедеральные (Москва, МосОбласть)
-    const subfedType = getSubfedType(shortName)
+    const subfedType = getSubfedType(shortName, row[secCols.SECNAME])
     if (subfedType) {
       const bond = createBond(row, secCols, marketDataMap.get(row[secCols.SECID]), mdCols, 'subfed', subfedType, sourceUrl, yields.get(row[secCols.SECID]))
       if (bond.daysToMaturity > 0) bonds.push(bond)
@@ -90,7 +90,7 @@ function parseCorpResponse(data, sourceUrl) {
     }
 
     // Ограниченный справочник выбранных эмитентов.
-    const issuer = getSafeIssuer(shortName)
+    const issuer = getSafeIssuer(shortName, row[secCols.SECNAME])
     if (issuer) {
       const bond = createBond(row, secCols, marketDataMap.get(row[secCols.SECID]), mdCols, 'corp', issuer, sourceUrl, yields.get(row[secCols.SECID]))
       if (bond.daysToMaturity > 0) bonds.push(bond)
@@ -105,20 +105,20 @@ function isOFZ(secId, shortName) {
   return shortName?.includes('ОФЗ') || /^SU2[69]\d{3}/.test(secId)
 }
 
-function getSubfedType(shortName) {
+function getSubfedType(shortName, fullName = '') {
   const name = shortName.toLowerCase()
-  if (name.includes('мособ') || name.includes('сфо мо')) {
+  if (/^мособ\d/.test(name) && /Московской области/i.test(fullName)) {
     return { code: 'mo', name: 'МосОбласть' }
   }
-  if (name.includes('мгор')) {
+  if (/мгор\d/.test(name) && /Займ Москвы/i.test(fullName)) {
     return { code: 'msk', name: 'Москва' }
   }
   return null
 }
 
-function getSafeIssuer(shortName) {
+function getSafeIssuer(shortName, fullName = '') {
   for (const issuer of SAFE_ISSUERS) {
-    if (issuer.pattern.test(shortName)) {
+    if (issuer.code === 'transneft' ? /^Транснефть(?:\s|$)/i.test(fullName) : issuer.pattern.test(shortName)) {
       return { code: issuer.code, name: issuer.name }
     }
   }
