@@ -2,7 +2,7 @@
 Description=Проверка MCP MOEX каждые две минуты
 
 [Timer]
-OnBootSec=90s
+OnActiveSec=90s
 OnUnitActiveSec=2min
 AccuracySec=10s
 
