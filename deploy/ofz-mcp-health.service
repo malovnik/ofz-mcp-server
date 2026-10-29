@@ -1,0 +1,11 @@
+[Unit]
+Description=Проверка MCP MOEX и свежести данных
+After=ofz-mcp.service
+
+[Service]
+Type=oneshot
+User=ofzmcp
+ExecStart=/usr/bin/curl --fail --silent --show-error --max-time 25 http://127.0.0.1:8371/health
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true

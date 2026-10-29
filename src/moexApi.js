@@ -23,8 +23,8 @@ export const SAFE_ISSUERS = [
 
 export async function fetchBonds() {
   const [ofzResponse, corpResponse] = await Promise.all([
-    fetch(MOEX_OFZ_URL),
-    fetch(MOEX_CORP_URL),
+    fetch(MOEX_OFZ_URL, { signal: AbortSignal.timeout(15000) }),
+    fetch(MOEX_CORP_URL, { signal: AbortSignal.timeout(15000) }),
   ])
 
   if (!ofzResponse.ok) {

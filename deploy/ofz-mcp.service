@@ -1,0 +1,42 @@
+[Unit]
+Description=MCP облигаций MOEX для клуба Первопроходцы
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=ofzmcp
+Group=ofzmcp
+WorkingDirectory=/srv/ofz-mcp/current
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=8371
+ExecStart=/opt/node22/bin/node /srv/ofz-mcp/current/src/server.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=25
+MemoryMax=256M
+CPUQuota=50%
+TasksMax=64
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+LockPersonality=true
+SystemCallArchitectures=native
+LogRateLimitIntervalSec=60s
+LogRateLimitBurst=50
+
+[Install]
+WantedBy=multi-user.target

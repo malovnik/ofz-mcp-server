@@ -6,26 +6,42 @@ import * as z from 'zod'
 import { fetchBonds, SAFE_ISSUERS } from './moexApi.js'
 
 const app = express()
-app.use(cors())
-app.use(express.json())
+app.disable('x-powered-by')
+const allowedOrigins = new Set((process.env.ALLOWED_ORIGINS || 'https://claude.ai,https://chatgpt.com,https://club.nikexpert.ru').split(','))
+app.use((req, res, next) => {
+  if (req.headers.origin && !allowedOrigins.has(req.headers.origin)) {
+    return res.status(403).json({ error: 'Недопустимый Origin' })
+  }
+  next()
+})
+app.use(cors({ origin: [...allowedOrigins], exposedHeaders: ['Mcp-Session-Id', 'MCP-Protocol-Version'] }))
+app.use(express.json({ limit: '64kb' }))
 
 // Кэш облигаций
 let bondsCache = []
 let lastFetch = 0
 const CACHE_TTL = 60000 // 1 минута
+const MAX_CACHE_AGE = 300000 // После 5 минут старые данные не выдаём.
+let pendingFetch
 
 async function getBondsData() {
   const now = Date.now()
   if (now - lastFetch > CACHE_TTL || bondsCache.length === 0) {
+    if (!pendingFetch) {
+      pendingFetch = fetchBonds().then(bonds => {
+        if (bonds.length === 0) throw new Error('Мосбиржа вернула пустой список облигаций')
+        bondsCache = bonds
+        lastFetch = Date.now()
+      }).finally(() => { pendingFetch = undefined })
+    }
     try {
-      bondsCache = await fetchBonds()
-      lastFetch = now
+      await pendingFetch
     } catch (e) {
       console.error('Failed to fetch bonds:', e.message)
-      if (bondsCache.length === 0) throw e
+      if (bondsCache.length === 0 || Date.now() - lastFetch > MAX_CACHE_AGE) throw e
     }
   }
-  return bondsCache
+  return [...bondsCache]
 }
 
 function formatDays(days) {
@@ -73,7 +89,7 @@ function createMcpServer() {
         min_yield: z.number().optional().describe('Минимальная доходность в процентах'),
         issuer: z.string().optional().describe('Код эмитента (sber, vtb, gazprom, rzd и др.)'),
         sort_by: z.enum(['yield', 'maturity', 'coupon']).optional().default('yield').describe('Сортировка'),
-        limit: z.number().optional().default(20).describe('Лимит результатов'),
+        limit: z.number().int().min(1).max(200).optional().default(20).describe('Лимит результатов'),
       },
     },
     async ({ type = 'all', max_months, min_yield, issuer, sort_by = 'yield', limit = 20 }) => {
@@ -110,7 +126,7 @@ function createMcpServer() {
       return {
         content: [{
           type: 'text',
-          text: `Найдено ${result.length} облигаций:\n\n${result.map((b, i) =>
+          text: `Источник: MOEX ISS. Получено: ${new Date(lastFetch).toISOString()}.\nНайдено ${result.length} облигаций:\n\n${result.map((b, i) =>
             `${i + 1}. **${b.name}** (${b.ticker})\n` +
             `   Тип: ${b.type === 'ofz' ? 'ОФЗ' : b.type === 'subfed' ? 'Субфед' : 'Корп'}${b.issuer ? ` (${b.issuer})` : ''}\n` +
             `   Цена: ${b.price || '—'} | Доходность: ${b.yield || '—'}\n` +
@@ -130,7 +146,7 @@ function createMcpServer() {
       description: 'Рассчитать доход от инвестиции в облигацию',
       inputSchema: {
         ticker: z.string().describe('Тикер облигации (например, SU26238RMFS4)'),
-        amount: z.number().describe('Сумма инвестиции в рублях'),
+        amount: z.number().positive().max(1e12).describe('Сумма инвестиции в рублях'),
       },
     },
     async ({ ticker, amount }) => {
@@ -284,7 +300,8 @@ app.get('/api/bonds', async (req, res) => {
 app.get('/health', async (_req, res) => {
   try {
     const bonds = await getBondsData()
-    res.json({ status: 'ok', bonds: bonds.length, cached: Date.now() - lastFetch < CACHE_TTL })
+    const age = Date.now() - lastFetch
+    res.status(age < CACHE_TTL ? 200 : 503).json({ status: age < CACHE_TTL ? 'ok' : 'degraded', bonds: bonds.length, cached: age < CACHE_TTL, fetchedAt: new Date(lastFetch).toISOString(), ageSeconds: Math.round(age / 1000) })
   } catch (error) {
     res.status(500).json({ status: 'error', message: error.message })
   }
@@ -304,8 +321,9 @@ app.get('/', (_req, res) => {
 })
 
 const PORT = process.env.PORT || 3001
+const HOST = process.env.HOST || '127.0.0.1'
 
-app.listen(PORT, () => {
+const listener = app.listen(PORT, HOST, () => {
   console.log(`OFZ MCP Server running on port ${PORT}`)
   console.log(`MCP endpoint: http://localhost:${PORT}/mcp`)
   console.log(`REST API: http://localhost:${PORT}/api/bonds`)
@@ -317,3 +335,10 @@ app.listen(PORT, () => {
     console.error('Failed to preload bonds:', e.message)
   })
 })
+
+for (const signal of ['SIGTERM', 'SIGINT']) {
+  process.on(signal, () => {
+    listener.close(() => process.exit(0))
+    setTimeout(() => process.exit(1), 20000).unref()
+  })
+}

@@ -1,0 +1,10 @@
+[Unit]
+Description=Проверка MCP MOEX каждые две минуты
+
+[Timer]
+OnBootSec=90s
+OnUnitActiveSec=2min
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target
