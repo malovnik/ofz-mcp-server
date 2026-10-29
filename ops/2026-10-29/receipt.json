@@ -1,0 +1,96 @@
+{
+  "status": "complete",
+  "date": "2026-10-29",
+  "timezone": "Asia/Bangkok",
+  "endpoint": "https://club.nikexpert.ru/mcp/moex/mcp",
+  "transport": "streamable-http",
+  "authentication_required": false,
+  "ai_api_key_required": false,
+  "ai_provider_used": null,
+  "source": "https://iss.moex.com/iss/reference/",
+  "server": {
+    "ssh_alias": "dovod-public",
+    "ip": "191.44.45.131",
+    "service": "ofz-mcp.service",
+    "health_timer": "ofz-mcp-health.timer",
+    "deployed_revision": "4b01b83afef20cf01728e8c5087dd6a7b9adc314",
+    "archive_sha256": "710567763fbda87aaa9d13f384fe2812c7e453abf5829d5ed94e94b9d3ca0d4c",
+    "listen": "127.0.0.1:8371",
+    "main_pid_after_restart": 1436837,
+    "automatic_restarts_at_1457": 0,
+    "enabled": true,
+    "timer_enabled": true,
+    "deployed_sources_match": true,
+    "automatic_restarts_final": 0
+  },
+  "mcp_check": {
+    "official_sdk": "@modelcontextprotocol/sdk 1.32.2",
+    "initialize": "passed",
+    "tools_list": [
+      "get_bonds",
+      "calculate_investment",
+      "get_issuers"
+    ],
+    "all_three_tool_calls": "passed",
+    "invalid_limit": "rejected",
+    "invalid_origin_http": 403,
+    "claude_cors_preflight_http": 204,
+    "bond_count": 771,
+    "sample_tickers": [
+      "SU29028RMFS6",
+      "SU29029RMFS4",
+      "SU29027RMFS8"
+    ],
+    "verified_from": [
+      "target Russian server",
+      "owner Mac over public HTTPS"
+    ],
+    "server_name": "mosbirzha-bonds",
+    "server_title": "Мосбиржа — облигации",
+    "version": "1.1.1",
+    "client_saved_label_verified": false
+  },
+  "lesson": {
+    "id": "346849202",
+    "url": "https://edu.malovnik.ru/teach/control/lesson/view/id/346849202",
+    "old_endpoint": "https://ofz-mcp-server-production.up.railway.app/mcp",
+    "old_http_status": 404,
+    "old_error": "Application not found",
+    "new_href_verified_after_reopening": true,
+    "only_url_text_and_href_changed": true,
+    "before_html_sha256": "a840ac7d0be37b405c471e2d1216e8021c9ed32096dc5716e2fc40df4ef3bcb9",
+    "after_html_sha256": "1d96ca4a6d6d36657e16af2f680b1e2c0a97f1036a62b2cb8e614da68da27659",
+    "screenshot_local_only": "lesson-link.png",
+    "screenshot_sha256": "73d5a0dd0301bc367075dd769a015f5e4c7cd36d14ea1cbbbf91bc89c59fd99e"
+  },
+  "club_homepage": {
+    "http_before": 200,
+    "http_after": 200,
+    "bytes": 38061,
+    "sha256": "eb00ff3a4c945971907243f3259a9d9646ef5f9e33be7e3fcac4c4f72e0a5d22",
+    "byte_identical": true
+  },
+  "npm_audit_vulnerabilities": 0,
+  "observation_file": "observation.jsonl",
+  "temporary_browser_tabs_closed": true,
+  "temporary_observer_pid": 50640,
+  "temporary_observer_session": 12282,
+  "accuracy": {
+    "report": "accuracy-v110.md",
+    "staging_tests": 8,
+    "staging_passed": 8,
+    "public_sdk": "passed",
+    "yield_source": "marketdata_yields.EFFECTIVEYIELD",
+    "floating_coupon_forecast": false,
+    "payment_schedule": "MOEX bondization",
+    "issuer_misclassifications_fixed": true
+  },
+  "observation": {
+    "scope": "initial deployment v1.0.0",
+    "seconds": 900,
+    "checks": 16,
+    "http200": 16,
+    "failures": 0
+  },
+  "temporary_observer_stopped": true
+}

@@ -1,0 +1,16 @@
+30dc09c6e73978b3cea4ca4213029f13a2f1462ffa602ed700309cd187ea62dc  /srv/ofz-mcp/current/src/server.js
+6fbe8e7e91bc20bf0860e3b253f6877c0c34b7c9e657cb9f29578176ba5fbfd9  /srv/ofz-mcp/current/src/moexApi.js
+e09e18a9cc49843217c8962f541c7f54061539c83eb4fed922b2921c998c034c  /srv/ofz-mcp/current/package-lock.json
+15cc183dbbdf6f808ed4dd450786b59e8404f09dac1cbeb302559dd209464d2d  /etc/systemd/system/ofz-mcp-health.service
+c3cc2c9466b0b3ced521fb49edc86734317889669560b3a40b3b2ecb1826baa3  /etc/systemd/system/ofz-mcp-health.timer
+active
+active
+active
+active
+active
+active
+malovnik:staff 644 /srv/ofz-mcp/current/src/server.js
+root:root 644 /etc/systemd/system/ofz-mcp.service
+-- No entries --
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful

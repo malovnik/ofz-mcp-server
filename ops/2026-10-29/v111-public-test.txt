@@ -1,0 +1,25 @@
+curl: (7) Failed to connect to 127.0.0.1 port 8371 after 0 ms: Could not connect to server
+curl: (7) Failed to connect to 127.0.0.1 port 8371 after 0 ms: Could not connect to server
+{"status":"ok","version":"1.1.1","bonds":771,"cached":true,"fetchedAt":"2026-10-29T08:26:13.917Z","ageSeconds":0}
+TAP version 13
+# {"endpoint":"https://club.nikexpert.ru/mcp/moex/mcp","bonds":771,"fetchedAt":"2026-10-29T08:26:13.917Z","tools":["get_bonds","calculate_investment","get_issuers"],"sample":"Источник: MOEX ISS. Получено: 2026-10-29T08:26:13.917Z.\\nОФЗ на TQOB; выпуски Москвы и Мособласти и выбранные корпоративные эмитенты на TQCB. Это ограниченная выборка, не весь рынок облигаций. Акций, фьючерсов и индексов нет.\\nMOEX ISS может отдавать котировки с задержкой. fetchedAt — время получения ответа, а не время сделки. Время биржи и сделки передаётся отдельно по Москве.\\nНайдено 3 облигаций (всего по фильтрам 58):\\n\\n1. ОФЗ 26253 (SU26253RMFS3)\\nЦена: 84,417% [marketdata_yields.PRICE]; доходность MOEX: 16,5953% [marketdata_yields.EFFECTIVEYIELD; to_maturity; дата 2038-10-06].\\nКупон: 64,82 RUB; Фиксированный с известными купонами; ближайшая выплата 2027-04-21.\\nНКД: 3,21 RUB; номинал: 1 000 RUB; лот: 1; погашение: 2038-10-06.\\nИсточник: https://iss.moex.com/iss/engines/stock/markets/bonds/boards/TQOB/securities.json?iss.meta=off; получено 2026-10-29T08:26:13.700Z; биржа 2026-10-29 11:26:11; сделка расчёта доходности 2026-10-29 11:11:56 (Москва).\\n\\n\\n2. ОФЗ 26246 (SU26246RMFS7)\\nЦена: 81,082% [marketdata_yields.PRICE]; доходность MOEX: 16,5869% [marketdata_yields.EFFECTIVEYIELD; to_maturity; дата 2036-03-12].\\nКупон: 59,84 RUB; Фиксированный с известными купонами; ближайшая выплата 2027-03-24.\\nНКД: 12,17 RUB; номинал: 1 000 RUB; лот: 1; погашение: 2036-03-12.\\nИсточник: https://iss.moex.com/iss/engines/stock/markets/bonds/boards/TQOB/securities.json?iss.meta=off; получено 2026-10-29T08:26:13.699Z; биржа 2026-10-29 11:26:11; сделка расчёта доходности 2026-10-29 11:11:58 (Москва).\\n\\n\\n3. ОФЗ 26254 (SU26254RMFS1)\\nЦена: 83,683% [marketdata_yields.PRICE]; доходность MOEX: 16,5847% [marketdata_yields.EFFECTIVEYIELD; to_maturity; дата 2040-10-03].\\nКупон: 64,82 RUB; Фиксированный с известными купонами; ближайшая выплата 2027-04-21.\\nНКД: 3,21 RUB; номинал: 1 000 RUB; лот: 1; погашение: 2040-10-03.\\nИсточник: https://iss.moex.com/iss/engines/stock/markets/bonds/boards/TQOB/securities.json?iss.meta=off; получено 2026-10-29T08:26:13.700Z; биржа 2026-10-29 11:26:11; сделка расчёта доходности 2026-10-29 11:11:56 (Москва).\\n"}
+# Subtest: MCP: подключение, три инструмента, MOEX и защита входа
+ok 1 - MCP: подключение, три инструмента, MOEX и защита входа
+  ---
+  duration_ms: 508.274206
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 835.965567
+MainPID=1436837
+NRestarts=0
+MemoryCurrent=62631936
+ActiveEnterTimestamp=Thu 2026-10-29 11:26:10 MSK
+/srv/ofz-mcp/releases/4b01b83afef20cf01728e8c5087dd6a7b9adc314
