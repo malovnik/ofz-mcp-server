@@ -4,3 +4,4 @@ node_modules/
 *.log
 .claude/
 .local/
+/ops/2026-10-29/lesson-link.png

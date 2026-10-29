@@ -3,342 +3,127 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import express from 'express'
 import cors from 'cors'
 import * as z from 'zod'
-import { fetchBonds, SAFE_ISSUERS } from './moexApi.js'
+import { fetchBonds, fetchPaymentSchedule, SAFE_ISSUERS } from './moexApi.js'
+import { coverage, timing, selectBonds, publicBond, bondsText, calculateInvestment } from './bondData.js'
 
+const info = {
+  name: 'mosbirzha-bonds', title: 'Мосбиржа — облигации', version: '1.1.0',
+  description: 'Облигации MOEX ISS: котировки, купоны, НКД, сроки, фильтры и календарь выплат. Источники и время каждого показателя. Только чтение, без ключа API. ' + coverage,
+  websiteUrl: 'https://club.nikexpert.ru/mcp/moex/',
+}
+const instructions = `${coverage} ${timing} Суммы передаются в валюте выпуска; рублёвый расчёт запрещён для валютных выпусков без конвертации. Доходность флоатеров — расчётный показатель MOEX с предположениями, не фиксированный будущий доход. Не называй нулевой COUPONVALUE известным нулевым купоном, если couponAmountKnown=false. Доходность к оферте и индексируемого номинала выделяется отдельно. Список эмитентов не является рейтингом надёжности. Для итогов используй structuredContent и сохраняй примечания, источники и даты.`
 const app = express()
 app.disable('x-powered-by')
-const allowedOrigins = new Set((process.env.ALLOWED_ORIGINS || 'https://claude.ai,https://chatgpt.com,https://club.nikexpert.ru').split(','))
-app.use((req, res, next) => {
-  if (req.headers.origin && !allowedOrigins.has(req.headers.origin)) {
-    return res.status(403).json({ error: 'Недопустимый Origin' })
-  }
-  next()
-})
-app.use(cors({ origin: [...allowedOrigins], exposedHeaders: ['Mcp-Session-Id', 'MCP-Protocol-Version'] }))
+const origins = (process.env.ALLOWED_ORIGINS || 'https://claude.ai,https://chatgpt.com,https://club.nikexpert.ru').split(',')
+app.use((req, res, next) => req.headers.origin && !origins.includes(req.headers.origin) ? res.status(403).json({ error: 'Недопустимый Origin' }) : next())
+app.use(cors({ origin: origins, exposedHeaders: ['Mcp-Session-Id', 'MCP-Protocol-Version'] }))
 app.use(express.json({ limit: '64kb' }))
 
-// Кэш облигаций
 let bondsCache = []
 let lastFetch = 0
-const CACHE_TTL = 60000 // 1 минута
-const MAX_CACHE_AGE = 300000 // После 5 минут старые данные не выдаём.
 let pendingFetch
-
+const CACHE_TTL = 60000
+const MAX_CACHE_AGE = 300000
 async function getBondsData() {
-  const now = Date.now()
-  if (now - lastFetch > CACHE_TTL || bondsCache.length === 0) {
-    if (!pendingFetch) {
-      pendingFetch = fetchBonds().then(bonds => {
-        if (bonds.length === 0) throw new Error('Мосбиржа вернула пустой список облигаций')
-        bondsCache = bonds
-        lastFetch = Date.now()
-      }).finally(() => { pendingFetch = undefined })
-    }
-    try {
-      await pendingFetch
-    } catch (e) {
-      console.error('Failed to fetch bonds:', e.message)
-      if (bondsCache.length === 0 || Date.now() - lastFetch > MAX_CACHE_AGE) throw e
+  if (Date.now() - lastFetch >= CACHE_TTL || !bondsCache.length) {
+    if (!pendingFetch) pendingFetch = fetchBonds().then(bonds => {
+      if (!bonds.length) throw new Error('MOEX вернула пустой список облигаций')
+      bondsCache = bonds
+      lastFetch = Date.now()
+    }).finally(() => { pendingFetch = undefined })
+    try { await pendingFetch } catch (error) {
+      console.error('MOEX:', error.message)
+      if (!bondsCache.length || Date.now() - lastFetch > MAX_CACHE_AGE) throw error
     }
   }
-  return [...bondsCache]
+  return bondsCache
 }
-
-function formatDays(days) {
-  if (days < 30) return `${days} дн.`
-  if (days < 365) return `${Math.round(days / 30)} мес.`
-  const years = Math.floor(days / 365)
-  const months = Math.round((days % 365) / 30)
-  return months > 0 ? `${years} г. ${months} мес.` : `${years} г.`
+const listInput = {
+  type: z.enum(['ofz', 'subfed', 'corp', 'all']).optional().default('all'),
+  max_months: z.number().positive().max(1200).optional(),
+  min_yield: z.number().min(-100).max(1000).optional().describe('Минимальный показатель доходности MOEX. Учитывай yieldKind: флоатеры, индексация и оферты несопоставимы с фиксированным доходом.'),
+  issuer: z.enum([...SAFE_ISSUERS.map(i => i.code), 'mo', 'msk']).optional(),
+  ticker: z.string().regex(/^[A-Z0-9]{1,24}$/).optional().describe('Точный тикер для проверки конкретного выпуска'),
+  coupon_type: z.enum(['all', 'known', 'floating', 'indexed', 'unknown']).optional().default('all'),
+  currency: z.enum(['RUB', 'CNY', 'USD', 'EUR', 'CHF', 'all']).optional().default('RUB').describe('Валюта номинала; по умолчанию только RUB'),
+  sort_by: z.enum(['yield', 'maturity', 'coupon']).optional().default('yield'),
+  limit: z.number().int().min(1).max(200).optional().default(20),
 }
-
-function getIssuerDescription(code) {
-  const descriptions = {
-    sber: 'Крупнейший банк России, контролируется ЦБ',
-    vtb: 'Второй госбанк России, господдержка',
-    gazprom: 'Крупнейшая газовая компания мира',
-    rzd: 'Государственная монополия ж/д перевозок',
-    rosneft: 'Крупнейшая нефтяная компания России',
-    rostelecom: 'Государственный оператор связи',
-    domrf: 'Институт развития жилья, госгарантии',
-    rshb: 'Госбанк для АПК',
-    fsk: 'Магистральные электросети',
-    rosseti: 'Холдинг электросетей России',
-    transneft: 'Монополия нефтепроводов',
-    gtlk: 'Государственная лизинговая компания',
-    rosatom: 'Госкорпорация атомной энергетики',
-  }
-  return descriptions[code] || 'Надёжный эмитент'
+const listSchema = z.object(listInput)
+const readOnly = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
+function response(data, text = JSON.stringify(data, null, 2)) {
+  return { content: [{ type: 'text', text }], structuredContent: data }
 }
-
+async function listBonds(params) {
+  const selected = selectBonds(await getBondsData(), params)
+  return { source: 'MOEX ISS', fetchedAt: new Date(lastFetch).toISOString(), stale: Date.now() - lastFetch >= CACHE_TTL, coverage, timing,
+    count: selected.bonds.length, totalMatching: selected.total, filters: params, bonds: selected.bonds.map(publicBond) }
+}
 function createMcpServer() {
-  const server = new McpServer({
-    name: 'ofz-bonds',
-    version: '1.0.0',
+  const server = new McpServer(info, { instructions })
+  server.registerTool('get_bonds', {
+    title: 'Облигации Мосбиржи', description: `Список облигаций с фильтрами, ценой, доходностью MOEX, купоном, НКД и происхождением полей. ${coverage} ${timing} Флоатеры помечены отдельно. По умолчанию RUB.`,
+    inputSchema: listInput, annotations: readOnly,
+  }, async params => {
+    const data = await listBonds(params)
+    return response(data, `Источник: MOEX ISS. Получено: ${data.fetchedAt}.\n${coverage}\n${timing}\n${data.stale ? 'Внимание: используются данные из кэша после ошибки обновления.\n' : ''}Найдено ${data.count} облигаций (всего по фильтрам ${data.totalMatching}):\n\n${bondsText(data.bonds)}`)
   })
-
-  // Tool: Получить облигации с фильтрами
-  server.registerTool(
-    'get_bonds',
-    {
-      title: 'Get Bonds',
-      description: 'Получить список облигаций ОФЗ, субфедеральных и корпоративных с фильтрами',
-      inputSchema: {
-        type: z.enum(['ofz', 'subfed', 'corp', 'all']).optional().default('all').describe('Тип облигаций'),
-        max_months: z.number().optional().describe('Максимальный срок до погашения в месяцах'),
-        min_yield: z.number().optional().describe('Минимальная доходность в процентах'),
-        issuer: z.string().optional().describe('Код эмитента (sber, vtb, gazprom, rzd и др.)'),
-        sort_by: z.enum(['yield', 'maturity', 'coupon']).optional().default('yield').describe('Сортировка'),
-        limit: z.number().int().min(1).max(200).optional().default(20).describe('Лимит результатов'),
-      },
-    },
-    async ({ type = 'all', max_months, min_yield, issuer, sort_by = 'yield', limit = 20 }) => {
-      let bonds = await getBondsData()
-
-      if (type !== 'all') bonds = bonds.filter(b => b.boardType === type)
-      if (max_months) bonds = bonds.filter(b => b.daysToMaturity <= max_months * 30)
-      if (min_yield) bonds = bonds.filter(b => b.yield && b.yield >= min_yield)
-      if (issuer) bonds = bonds.filter(b => b.issuer?.code === issuer)
-
-      bonds.sort((a, b) => {
-        if (sort_by === 'yield') return (b.yield ?? 0) - (a.yield ?? 0)
-        if (sort_by === 'maturity') return a.daysToMaturity - b.daysToMaturity
-        if (sort_by === 'coupon') return b.couponValue - a.couponValue
-        return 0
-      })
-
-      bonds = bonds.slice(0, limit)
-
-      const result = bonds.map(b => ({
-        name: b.shortName,
-        ticker: b.secId,
-        type: b.boardType,
-        issuer: b.issuer?.name || (b.boardType === 'ofz' ? 'Минфин РФ' : null),
-        price: b.price ? `${b.price.toFixed(2)}%` : null,
-        yield: b.yield ? `${b.yield.toFixed(2)}%` : (b.secId.startsWith('SU29') ? '~RUONIA' : null),
-        maturity: b.maturityDate?.toLocaleDateString('ru-RU'),
-        daysToMaturity: b.daysToMaturity,
-        coupon: b.couponValue ? `${b.couponValue.toFixed(2)} ₽` : null,
-        nextCoupon: b.nextCouponDate?.toLocaleDateString('ru-RU'),
-        nkd: b.accruedInt ? `${b.accruedInt.toFixed(2)} ₽` : null,
-      }))
-
-      return {
-        content: [{
-          type: 'text',
-          text: `Источник: MOEX ISS. Получено: ${new Date(lastFetch).toISOString()}.\nНайдено ${result.length} облигаций:\n\n${result.map((b, i) =>
-            `${i + 1}. **${b.name}** (${b.ticker})\n` +
-            `   Тип: ${b.type === 'ofz' ? 'ОФЗ' : b.type === 'subfed' ? 'Субфед' : 'Корп'}${b.issuer ? ` (${b.issuer})` : ''}\n` +
-            `   Цена: ${b.price || '—'} | Доходность: ${b.yield || '—'}\n` +
-            `   Погашение: ${b.maturity} (${formatDays(b.daysToMaturity)})\n` +
-            `   Купон: ${b.coupon || '—'} | НКД: ${b.nkd || '—'}`
-          ).join('\n\n')}`,
-        }],
-      }
+  server.registerTool('calculate_investment', {
+    title: 'Покупка и выплаты по облигации', description: 'Оценка покупки с НКД и размером лота. Для рублёвых выпусков с известными купонами — суммы по полному календарю MOEX с датами фиксации и погашениями. Для флоатеров, индексации, валюты, оферты и неполных данных не выдумывает прибыль. Комиссии и налоги не включены.',
+    inputSchema: { ticker: z.string().regex(/^[A-Z0-9]{1,24}$/), amount: z.number().positive().max(1e12).describe('Бюджет в рублях') }, annotations: readOnly,
+  }, async ({ ticker, amount }) => {
+    const bond = (await getBondsData()).find(b => b.secId === ticker)
+    if (!bond) return { isError: true, content: [{ type: 'text', text: `Выпуск ${ticker} не найден в описанной выборке. ${coverage}` }] }
+    let schedule
+    let scheduleError
+    if (bond.couponKind === 'known' && bond.faceCurrency === 'RUB' && bond.settlementCurrency === 'RUB') {
+      try { schedule = await fetchPaymentSchedule(ticker) } catch (error) { scheduleError = error.message }
     }
-  )
-
-  // Tool: Расчёт инвестиции
-  server.registerTool(
-    'calculate_investment',
-    {
-      title: 'Calculate Investment',
-      description: 'Рассчитать доход от инвестиции в облигацию',
-      inputSchema: {
-        ticker: z.string().describe('Тикер облигации (например, SU26238RMFS4)'),
-        amount: z.number().positive().max(1e12).describe('Сумма инвестиции в рублях'),
-      },
-    },
-    async ({ ticker, amount }) => {
-      const bonds = await getBondsData()
-      const bond = bonds.find(b => b.secId === ticker)
-
-      if (!bond) return { content: [{ type: 'text', text: `Облигация ${ticker} не найдена` }] }
-      if (!bond.price) return { content: [{ type: 'text', text: `Нет данных о цене для ${ticker}` }] }
-
-      const pricePerBond = (bond.price / 100) * bond.faceValue + bond.accruedInt
-      const quantity = Math.floor(amount / pricePerBond)
-      const actualInvestment = quantity * pricePerBond
-      const couponPeriodDays = bond.couponPeriod || 182
-      const couponsPerYear = Math.round(365 / couponPeriodDays)
-      const annualCouponIncome = quantity * bond.couponValue * couponsPerYear
-
-      let totalCoupons = 0
-      if (bond.nextCouponDate && bond.couponValue > 0) {
-        const today = new Date()
-        const daysToNextCoupon = Math.ceil((bond.nextCouponDate - today) / 86400000)
-        if (daysToNextCoupon > 0 && daysToNextCoupon <= bond.daysToMaturity) {
-          totalCoupons = 1 + Math.floor((bond.daysToMaturity - daysToNextCoupon) / couponPeriodDays)
-        }
-      }
-
-      const totalCouponIncome = quantity * bond.couponValue * totalCoupons
-      const maturityValue = quantity * bond.faceValue
-      const totalProfit = maturityValue + totalCouponIncome - actualInvestment
-      const isFloater = bond.secId.startsWith('SU29')
-
-      const fmt = n => n.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
-
-      return {
-        content: [{
-          type: 'text',
-          text: `## Расчёт: ${bond.shortName}\n\n` +
-            `**Вложение:** ${fmt(amount)} ₽\n\n` +
-            `### Покупка\n` +
-            `- **${quantity} шт.** по ${pricePerBond.toFixed(2)} ₽\n` +
-            `- Затраты: ${fmt(actualInvestment)} ₽\n\n` +
-            (isFloater
-              ? `### Флоатер\nКупон ~RUONIA. Доход зависит от ставки ЦБ.\n\n`
-              : `### Доход\n` +
-                `- Годовой: **+${fmt(annualCouponIncome)} ₽**\n` +
-                `- Купонов до погашения: ${totalCoupons}\n` +
-                `- Всего купонов: +${fmt(totalCouponIncome)} ₽\n\n`) +
-            `### Погашение (${bond.maturityDate?.toLocaleDateString('ru-RU')})\n` +
-            `- Номинал: ${fmt(maturityValue)} ₽\n` +
-            (isFloater ? '' : `- **Прибыль: +${fmt(totalProfit)} ₽**`),
-        }],
-      }
-    }
-  )
-
-  // Tool: Список эмитентов
-  server.registerTool(
-    'get_issuers',
-    {
-      title: 'Get Issuers',
-      description: 'Получить список надёжных эмитентов корпоративных облигаций',
-      inputSchema: {},
-    },
-    async () => {
-      const issuersInfo = SAFE_ISSUERS.map(i => ({
-        code: i.code,
-        name: i.name,
-        description: getIssuerDescription(i.code),
-      }))
-
-      return {
-        content: [{
-          type: 'text',
-          text: `## Надёжные эмитенты\n\n` +
-            issuersInfo.map(i => `- **${i.name}** (\`${i.code}\`): ${i.description}`).join('\n'),
-        }],
-      }
-    }
-  )
-
+    const result = calculateInvestment(bond, amount, schedule)
+    if (scheduleError) result.reason = `Календарь MOEX недоступен: ${scheduleError}. Покупка оценена, общая прибыль не рассчитана.`
+    result.stale = Date.now() - lastFetch >= CACHE_TTL
+    return response(result, `Покупка и выплаты: ${bond.shortName}\n${JSON.stringify(result, null, 2)}`)
+  })
+  server.registerTool('get_issuers', {
+    title: 'Эмитенты в выборке', description: 'Справочник поддерживаемых кодов эмитентов. Это перечень для фильтрации, без рейтинга надёжности и рекомендаций покупать.',
+    inputSchema: {}, annotations: readOnly,
+  }, async () => response({ coverage, note: 'Наличие в справочнике не означает надёжность или государственную гарантию.', issuers: [...SAFE_ISSUERS.map(({ code, name }) => ({ code, name })), { code: 'msk', name: 'Москва' }, { code: 'mo', name: 'Московская область' }] }))
   return server
 }
-
-// MCP endpoint с Streamable HTTP
 app.all('/mcp', async (req, res) => {
+  const server = createMcpServer()
+  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined })
+  res.on('close', () => { void transport.close(); void server.close() })
   try {
-    const server = createMcpServer()
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: undefined,
-    })
-
-    res.on('close', () => {
-      transport.close()
-      server.close()
-    })
-
     await server.connect(transport)
     await transport.handleRequest(req, res, req.body)
   } catch (error) {
-    console.error('MCP error:', error)
-    if (!res.headersSent) {
-      res.status(500).json({
-        jsonrpc: '2.0',
-        error: { code: -32603, message: 'Internal error' },
-        id: null,
-      })
-    }
+    console.error('MCP:', error.message)
+    if (!res.headersSent) res.status(500).json({ jsonrpc: '2.0', error: { code: -32603, message: 'Ошибка сервера' }, id: null })
   }
 })
-
-// REST API для простого доступа
 app.get('/api/bonds', async (req, res) => {
-  try {
-    const { type, max_months, min_yield, issuer, sort_by = 'yield', limit = 50 } = req.query
-    let bonds = await getBondsData()
-
-    if (type && type !== 'all') bonds = bonds.filter(b => b.boardType === type)
-    if (max_months) bonds = bonds.filter(b => b.daysToMaturity <= Number(max_months) * 30)
-    if (min_yield) bonds = bonds.filter(b => b.yield && b.yield >= Number(min_yield))
-    if (issuer) bonds = bonds.filter(b => b.issuer?.code === issuer)
-
-    bonds.sort((a, b) => {
-      if (sort_by === 'yield') return (b.yield ?? 0) - (a.yield ?? 0)
-      if (sort_by === 'maturity') return a.daysToMaturity - b.daysToMaturity
-      if (sort_by === 'coupon') return b.couponValue - a.couponValue
-      return 0
-    })
-
-    res.json({
-      count: Math.min(bonds.length, Number(limit)),
-      bonds: bonds.slice(0, Number(limit)).map(b => ({
-        ticker: b.secId,
-        name: b.shortName,
-        type: b.boardType,
-        issuer: b.issuer?.name,
-        price: b.price,
-        yield: b.yield,
-        maturityDate: b.maturityDate?.toISOString().split('T')[0],
-        daysToMaturity: b.daysToMaturity,
-        couponValue: b.couponValue,
-        nextCouponDate: b.nextCouponDate?.toISOString().split('T')[0],
-        accruedInt: b.accruedInt,
-        faceValue: b.faceValue,
-      })),
-    })
-  } catch (error) {
-    res.status(500).json({ error: error.message })
-  }
+  const query = { ...req.query }
+  for (const key of ['max_months', 'min_yield', 'limit']) if (query[key] !== undefined && typeof query[key] === 'string' && query[key].trim()) query[key] = Number(query[key])
+  const parsed = listSchema.safeParse(query)
+  if (!parsed.success) return res.status(400).json({ error: 'Некорректные фильтры', details: parsed.error.issues.map(i => ({ field: i.path.join('.'), message: i.message })) })
+  try { res.json(await listBonds(parsed.data)) } catch (error) { res.status(503).json({ error: error.message }) }
 })
-
-// Health check
 app.get('/health', async (_req, res) => {
   try {
     const bonds = await getBondsData()
     const age = Date.now() - lastFetch
-    res.status(age < CACHE_TTL ? 200 : 503).json({ status: age < CACHE_TTL ? 'ok' : 'degraded', bonds: bonds.length, cached: age < CACHE_TTL, fetchedAt: new Date(lastFetch).toISOString(), ageSeconds: Math.round(age / 1000) })
-  } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message })
-  }
+    res.status(age < CACHE_TTL ? 200 : 503).json({ status: age < CACHE_TTL ? 'ok' : 'degraded', version: info.version, bonds: bonds.length, cached: age < CACHE_TTL, fetchedAt: new Date(lastFetch).toISOString(), ageSeconds: Math.round(age / 1000) })
+  } catch (error) { res.status(503).json({ status: 'error', message: error.message }) }
 })
-
-app.get('/', (_req, res) => {
-  res.json({
-    name: 'OFZ MCP Server',
-    version: '1.0.0',
-    endpoints: {
-      mcp: '/mcp - Model Context Protocol endpoint',
-      api: '/api/bonds - REST API для получения облигаций',
-      health: '/health - Проверка состояния',
-    },
-    tools: ['get_bonds', 'calculate_investment', 'get_issuers'],
-  })
-})
-
+app.get('/', (_req, res) => res.json({ ...info, instructions, endpoints: { mcp: '/mcp', api: '/api/bonds', health: '/health' } }))
 const PORT = process.env.PORT || 3001
 const HOST = process.env.HOST || '127.0.0.1'
-
 const listener = app.listen(PORT, HOST, () => {
-  console.log(`OFZ MCP Server running on port ${PORT}`)
-  console.log(`MCP endpoint: http://localhost:${PORT}/mcp`)
-  console.log(`REST API: http://localhost:${PORT}/api/bonds`)
-
-  // Preload bonds cache
-  getBondsData().then(bonds => {
-    console.log(`Loaded ${bonds.length} bonds`)
-  }).catch(e => {
-    console.error('Failed to preload bonds:', e.message)
-  })
+  console.log(`${info.title} ${info.version}: ${HOST}:${PORT}`)
+  getBondsData().then(bonds => console.log(`MOEX: ${bonds.length} облигаций`)).catch(error => console.error('MOEX:', error.message))
 })
-
-for (const signal of ['SIGTERM', 'SIGINT']) {
-  process.on(signal, () => {
-    listener.close(() => process.exit(0))
-    setTimeout(() => process.exit(1), 20000).unref()
-  })
-}
+for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => {
+  listener.close(() => process.exit(0))
+  setTimeout(() => process.exit(1), 20000).unref()
+})
