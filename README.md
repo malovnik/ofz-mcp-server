@@ -55,27 +55,40 @@ npm start
 - REST API: `http://localhost:3001/api/bonds`
 - Health check: `http://localhost:3001/health`
 
-## Деплой на Railway
+## Рабочий сервер
 
-1. Создать новый проект в Railway
-2. Подключить GitHub репозиторий
-3. Railway автоматически задеплоит по `railway.json`
+С29.10.2026 сервер работает на российском Sprintbox рядом с сайтом клуба.
+Адрес подключения (Streamable HTTP):
+
+```
+https://club.nikexpert.ru/mcp/moex/mcp
+```
+
+API-ключи, OAuth и ключ ИИ не нужны. Данные поступают напрямую из MOEX ISS;
+модели OpenAI/DeepSeek сервер не вызывает. Прежнее приложение Railway удалено
+и возвращает404. Автозапуск, проверки и откат описаны в [deploy/README.md](deploy/README.md).
 
 ## Подключение к Claude
 
-После деплоя добавить MCP сервер в Claude Code (`~/.claude.json`):
+В Claude добавьте пользовательский коннектор с URL выше. В Claude Code
+можно добавить MCP-сервер в `~/.claude.json`:
 
 ```json
 {
   "mcpServers": {
     "ofz-bonds": {
-      "url": "https://your-app.up.railway.app/mcp"
+      "type": "http",
+      "url": "https://club.nikexpert.ru/mcp/moex/mcp"
     }
   }
 }
 ```
 
-Или для веб-версии Claude — использовать MCP Connector.
+Проверка HTTPS и всех трёх инструментов официальным SDK:
+
+```bash
+TEST_ENDPOINT=https://club.nikexpert.ru/mcp/moex/mcp npm test
+```
 
 ## REST API
 
@@ -91,5 +104,5 @@ npm start
 
 Пример:
 ```bash
-curl "https://your-app.up.railway.app/api/bonds?type=ofz&limit=5"
+curl "https://club.nikexpert.ru/mcp/moex/api/bonds?type=ofz&limit=5"
 ```
