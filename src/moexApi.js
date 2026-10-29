@@ -156,9 +156,11 @@ export function createBond(secRow, secCols, mdRow, mdCols, boardType, issuer, so
     : 0
 
   const nextCouponDate = validDate(security.NEXTCOUPON)
-  const couponKind = /плавающ|ОФЗ-ПК/i.test(`${security.BONDTYPE} ${security.SECNAME}`) ? 'floating'
-    : /индексир/i.test(`${security.FACEVALUE_TYPE} ${security.SECNAME}`) || /ОФЗ-ИН/.test(security.SECNAME) ? 'indexed'
-    : /фиксирован|известн|ОФЗ-ПД/.test(`${security.BONDTYPE} ${security.SECNAME}`) ? 'known' : 'unknown'
+  const indexedNominal = /индексир|ОФЗ-ИН/i.test(`${security.FACEVALUE_TYPE} ${security.BONDTYPE} ${security.SECNAME}`)
+  const couponDescription = `${security.BONDTYPE} ${security.COUPON_DETAILS} ${security.SECNAME}`
+  const couponKind = /плавающ|ОФЗ-ПК/i.test(couponDescription) ? 'floating'
+    : indexedNominal ? 'indexed'
+    : !/неизвестн/i.test(couponDescription) && /фиксирован|известн|ОФЗ-ПД/i.test(couponDescription) ? 'known' : 'unknown'
   const candidates = [
     ...(number(yields.EFFECTIVEYIELD) !== null ? [[yields.PRICE, yields.EFFECTIVEYIELD, 'marketdata_yields.PRICE', 'marketdata_yields.EFFECTIVEYIELD']] : []),
     [market.LAST, market.YIELD, 'marketdata.LAST', 'marketdata.YIELD'],
@@ -187,6 +189,9 @@ export function createBond(secRow, secCols, mdRow, mdCols, boardType, issuer, so
     yieldDate: yieldDate?.toISOString().slice(0, 10) ?? null,
     yieldKind: couponKind === 'floating' ? 'floating_coupon_estimate' : couponKind === 'indexed' ? 'indexed_nominal' : yieldDate && maturityDate && +yieldDate < +maturityDate ? 'to_offer' : 'to_maturity',
     couponKind,
+    bondType: security.BONDTYPE,
+    faceValueType: security.FACEVALUE_TYPE,
+    indexedNominal,
     couponDetails: security.COUPON_DETAILS,
     couponAmountKnown: number(security.COUPONVALUE) !== null && !(couponKind === 'floating' && security.COUPONVALUE === 0 && security.COUPONPERCENT === null),
     maturityDate,

@@ -65,6 +65,9 @@ test('Нулевой НКД и отрицательная доходность �
   const missing = fromRaw({ ...fixed.raw.securities, FACEVALUE: null, FACEVALUEONSETTLEDATE: null, ACCRUEDINT: null }, fixed.raw.marketdata)
   assert.equal(missing.faceValue, null)
   assert.equal(calculateInvestment(missing, 10000, schedule).purchase, null)
+  const unknown = fromRaw({ ...fixed.raw.securities, SECNAME: 'Корпоративный выпуск', BONDTYPE: 'Облигация с фиксированным (неизвестным) купоном', COUPON_DETAILS: 'Фиксированный с неизвестными купонами' }, fixed.raw.marketdata)
+  assert.equal(unknown.couponKind, 'unknown')
+  assert.equal(calculateInvestment(unknown, 10000, schedule).cashflows, null)
 })
 
 test('Валютный выпуск не считается рублёвым; индексация, оферта и неполный календарь не дают вымышленной прибыли', () => {

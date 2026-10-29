@@ -21,7 +21,7 @@ export function selectBonds(bonds, { type = 'all', max_months, min_yield, issuer
 export function publicBond(b) {
   const notes = []
   if (b.couponKind === 'floating') notes.push('Плавающий купон: доходность MOEX является расчётным показателем с предположениями о будущих ставках; фиксированного дохода до погашения нет.')
-  if (b.couponKind === 'indexed') notes.push('Индексируемый номинал: показатель доходности нельзя смешивать с номинальной доходностью обычных облигаций.')
+  if (b.indexedNominal || b.couponKind === 'indexed') notes.push('Индексируемый номинал: показатель доходности нельзя смешивать с номинальной доходностью обычных облигаций.')
   if (!b.couponAmountKnown) notes.push('Сумма ближайшего купона в ISS не определена; rawCouponValue сохраняет исходное значение, включая ноль.')
   if (b.priceSource?.startsWith('securities.')) notes.push('Цена и доходность взяты за предыдущую торговую дату, указанную в source.previousDate.')
   return {
@@ -32,7 +32,7 @@ export function publicBond(b) {
     legacyYield: b.legacyYield, legacyYieldSource: b.legacyYieldSource, lastTradePrice: b.lastTradePrice,
     yieldMethodology: 'https://www.moex.com/n95432',
     maturityDate: b.maturityDate?.toISOString().slice(0, 10) ?? null, daysToMaturity: b.daysToMaturity,
-    couponKind: b.couponKind, couponDetails: b.couponDetails,
+    couponKind: b.couponKind, couponDetails: b.couponDetails, bondType: b.bondType, faceValueType: b.faceValueType, indexedNominal: b.indexedNominal,
     couponValue: b.couponAmountKnown ? b.couponValue : null, rawCouponValue: b.couponValue, couponPercent: b.couponPercent,
     couponAmountKnown: b.couponAmountKnown, nextCouponDate: b.nextCouponDate?.toISOString().slice(0, 10) ?? null,
     accruedInt: b.accruedInt, faceValue: b.faceValue, faceCurrency: b.faceCurrency,
